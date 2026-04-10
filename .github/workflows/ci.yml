@@ -1,0 +1,48 @@
+name: LR9 CI/CD Pipeline
+
+on:
+  push:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  static-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - run: pip install flake8 pylint bandit lizard
+      - run: flake8 . --count --max-line-length=100 --statistics --exit-zero
+      - run: pylint --fail-under=7.0 auth_module.py forecast_module.py pages.py || true
+      - run: bandit -r . -ll || true
+      - run: lizard . --CCN 10 -l python || true
+
+  test:
+    runs-on: ubuntu-latest
+    needs: static-analysis
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - run: pip install pytest numpy pandas behave
+      - run: pytest test_auth.py test_forecast.py test_tdd.py test_ui.py -v
+      - run: pytest test_integration.py -v || true
+      - run: behave features/ --format=pretty || true
+
+  coverage:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - run: pip install pytest-cov numpy pandas
+      - run: pytest --cov=auth_module --cov=forecast_module --cov=pages --cov-report=html --cov-fail-under=70
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: htmlcov/
